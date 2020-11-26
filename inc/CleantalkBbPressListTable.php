@@ -140,7 +140,12 @@ class CleantalkBbPressListTable extends \Cleantalk\ApbctWP\CleantalkListTable
         $column_content .= '</div>';
 
         $actions = array(
-            'trash'     => sprintf( '<a href="?page=%s&action=%s&spam=%s">Trash</a>', $_REQUEST['page'],'trash', $id ),
+            'trash'     => sprintf(
+            	'<a href="?page=%s&action=%s&spam=%s">Trash</a>',
+	            sanitize_title( $_REQUEST['page'], 'ct_bbpress_check_spam' ),
+	            'trash',
+	            $id
+            ),
         );
 
         return sprintf( '%1$s %2$s', $column_content, $this->row_actions( $actions ) );
@@ -200,8 +205,8 @@ class CleantalkBbPressListTable extends \Cleantalk\ApbctWP\CleantalkListTable
 
         if( ! empty( $ids ) ) {
             foreach ( $ids as $id) {
-                delete_post_meta( $id, 'ct_marked_as_spam' );
-                wp_trash_post( $id );
+                delete_post_meta( sanitize_key( $id ), 'ct_marked_as_spam' );
+                wp_trash_post( sanitize_key( $id ) );
             }
         }
 
