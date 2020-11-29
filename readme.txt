@@ -2,7 +2,7 @@
 Contributors: glomberg
 Tags: bbpress, spam, cleaner, spam check, spam comments, spam user, spam topics
 Requires at least: 3.0
-Tested up to: 5.5
+Tested up to: 5.6
 Requires PHP: 5.4
 Stable tag: 1.0.0
 License: GPLv2
