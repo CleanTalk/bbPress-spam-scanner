@@ -22,7 +22,7 @@ class CleantalkBbPressChecker
         wp_enqueue_style ( 'jqueryui_css', plugins_url('/cleantalk-spam-protect/css/jquery-ui.min.css'), array(), '1.21.1', 'all' );
         wp_enqueue_style ( 'jqueryui_theme_css', plugins_url('/cleantalk-spam-protect/css/jquery-ui.theme.min.css'), array(), '1.21.1', 'all' );
 
-        wp_enqueue_script( 'ct_bbpress_checkspam',  plugins_url('/cleantalk-bbpress-scan/js/cleantalk-bbpress-checkspam.js'), array( 'jquery', 'jqueryui' ), APBCT_VERSION );
+        wp_enqueue_script( 'ct_bbpress_checkspam',  plugins_url('/cleantalk-bbpress-spam-scanner/js/cleantalk-bbpress-checkspam.js'), array( 'jquery', 'jqueryui' ), APBCT_VERSION );
         wp_localize_script( 'ct_bbpress_checkspam', 'ctBbpressCheck', array(
             'ct_ajax_nonce'               => wp_create_nonce('ct_secret_nonce'),
             'ct_prev_accurate'            => !empty($prev_check['accurate']) ? true                : false,
