@@ -20,11 +20,10 @@ if ( ! defined( 'WPINC' ) ) {
  **/
 if (
     in_array( 'cleantalk-spam-protect/cleantalk.php', apply_filters( 'active_plugins', get_option( 'active_plugins' ) ) ) &&
-    in_array( 'bbpress/bbpress.php', apply_filters( 'active_plugins', get_option( 'active_plugins' ) ) ) &&
-    defined( 'APBCT_DIR_PATH' )
+    in_array( 'bbpress/bbpress.php', apply_filters( 'active_plugins', get_option( 'active_plugins' ) ) )
 ) {
 
-    require_once APBCT_DIR_PATH . '/lib/autoloader.php';
+	require_once realpath( plugin_dir_path( __FILE__ ) . '/../cleantalk-spam-protect/lib/autoloader.php' );
     require_once 'inc/CleantalkBbPressScanner.php';
     require_once 'inc/CleantalkBbPressChecker.php';
     require_once 'inc/CleantalkBbPressListTable.php';
