@@ -322,7 +322,7 @@ class CleantalkBbPressChecker
                 die();
             }
 
-            $result = \Cleantalk\ApbctWP\API::method__spam_check_cms( $apbct->api_key, $data, null );
+            $result = \Cleantalk\ApbctWP\API::methodSpamCheckCms( $apbct->api_key, $data, null );
 
             if(empty($result['error'])){
 
