@@ -17,37 +17,53 @@ class CleantalkBbPressChecker
         global $apbct;
         $this->apbct = $apbct;
 
-        // jQueryUI
-        wp_enqueue_script( 'jqueryui', plugins_url('/cleantalk-spam-protect/js/jquery-ui.min.js'), array('jquery'), '1.12.1' );
-        wp_enqueue_style ( 'jqueryui_css', plugins_url('/cleantalk-spam-protect/css/jquery-ui.min.css'), array(), '1.21.1', 'all' );
-        wp_enqueue_style ( 'jqueryui_theme_css', plugins_url('/cleantalk-spam-protect/css/jquery-ui.theme.min.css'), array(), '1.21.1', 'all' );
-
-        wp_enqueue_script( 'ct_bbpress_checkspam',  plugins_url('/cleantalk-bbpress-spam-scanner/js/cleantalk-bbpress-checkspam.js'), array( 'jquery', 'jqueryui' ), APBCT_VERSION );
-        wp_localize_script( 'ct_bbpress_checkspam', 'ctBbpressCheck', array(
-            'ct_ajax_nonce'               => wp_create_nonce('ct_secret_nonce'),
-            'ct_prev_accurate'            => !empty($prev_check['accurate']) ? true                : false,
-            'ct_prev_from'                => !empty($prev_check['from'])     ? $prev_check['from'] : false,
-            'ct_prev_till'                => !empty($prev_check['till'])     ? $prev_check['till'] : false,
-            'ct_timeout_confirm'          => __('Failed from timeout. Going to check topics again.', 'cleantalk-spam-protect'),
-            'ct_confirm_trash_all'        => __('Trash all spam topics from the list?', 'cleantalk-spam-protect'),
-            'ct_confirm_spam_all'         => __('Mark as spam all topics from the list?', 'cleantalk-spam-protect'),
-            'ct_comments_added_after'     => __('topics', 'cleantalk-spam-protect'),
-            'ct_status_string'            => __('Checked %s, found %s spam topics and %s bad topics (without IP or email).', 'cleantalk-spam-protect'),
-            'ct_status_string_warning'    => '<p>'.__('Please do backup of WordPress database before delete any accounts!', 'cleantalk-spam-protect').'</p>',
-            'start'                       => !empty($_COOKIE['ct_topics_start_check']) ? true : false,
-        ));
+        wp_enqueue_script(
+            'ct_bbpress_checkspam',
+            plugins_url('/cleantalk-bbpress-spam-scanner/js/cleantalk-bbpress-checkspam.js'),
+            array(
+                'jquery',
+                'jquery-ui-datepicker',
+                'jquery-ui-core'
+            )
+        );
+        wp_localize_script(
+            'ct_bbpress_checkspam',
+            'ctBbpressCheck',
+            array(
+                'ct_ajax_nonce'               => wp_create_nonce('ct_secret_nonce'),
+                'ct_prev_accurate'            => !empty($prev_check['accurate']) ? true                : false,
+                'ct_prev_from'                => !empty($prev_check['from'])     ? $prev_check['from'] : false,
+                'ct_prev_till'                => !empty($prev_check['till'])     ? $prev_check['till'] : false,
+                'ct_timeout_confirm'          => __('Failed from timeout. Going to check topics again.', 'cleantalk-spam-protect'),
+                'ct_confirm_trash_all'        => __('Trash all spam topics from the list?', 'cleantalk-spam-protect'),
+                'ct_confirm_spam_all'         => __('Mark as spam all topics from the list?', 'cleantalk-spam-protect'),
+                'ct_comments_added_after'     => __('topics', 'cleantalk-spam-protect'),
+                'ct_status_string'            => __('Checked %s, found %s spam topics and %s bad topics (without IP or email).', 'cleantalk-spam-protect'),
+                'ct_status_string_warning'    => '<p>'.__('Please do backup of WordPress database before delete any accounts!', 'cleantalk-spam-protect').'</p>',
+                'start'                       => !empty($_COOKIE['ct_topics_start_check']) ? true : false,
+            )
+        );
 
         // Common CSS
-        wp_enqueue_style ( 'cleantalk_admin_css_settings_page', plugins_url('/cleantalk-spam-protect/css/cleantalk-spam-check.min.css'), array( 'jqueryui_css' ), APBCT_VERSION, 'all' );
-
+        wp_enqueue_style(
+            'jqueryui_css',
+            APBCT_CSS_ASSETS_PATH . '/jquery-ui.min.css',
+            array(),
+            '1.21.1'
+        );
+        wp_enqueue_style (
+            'cleantalk_admin_css_settings_page',
+            plugins_url('/cleantalk-spam-protect/css/cleantalk-spam-check.min.css'),
+            'jqueryui_css'
+        );
     }
 
     private static function get_count_text()
     {
         $topics = get_posts( array(
-            'numberposts' => -1,
-            'post_type'   => 'topic',
-        ) );
+                                 'numberposts' => -1,
+                                 'post_type'   => 'topic',
+                             ) );
 
         if( count( $topics ) ) {
             $text = sprintf( esc_html__ ('Total count of bbPress topics: %s.', 'cleantalk-bbpress-scan' ), count( $topics ) );
