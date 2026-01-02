@@ -4,7 +4,7 @@
   Plugin URI: https://cleantalk.org
   Description: Check existing bbPress topics for spam and move to trash all found spam.
   Version: 1.0.2
-  Author: СleanTalk <welcome@cleantalk.org>
+  Author: CleanTalk <welcome@cleantalk.org>
   Author URI: https://cleantalk.org
   Text Domain: cleantalk-bbpress-scan
   Domain Path: /i18n
