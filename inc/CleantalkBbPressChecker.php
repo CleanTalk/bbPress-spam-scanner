@@ -111,7 +111,7 @@ class CleantalkBbPressChecker
             <?php if(!empty($_COOKIE['ct_paused_'.$this->page_slug.'_check'])) { ?><button class="button ct_check_params_elem" id="ct_proceed_check_button"><?php _e("Continue check", 'cleantalk-spam-protect'); ?></button><?php } ?>
             <p class="ct_check_params_desc"><?php _e("The plugin will check all $this->page_slug against blacklists database and show you senders that have spam activity on other websites.", 'cleantalk-spam-protect'); ?></p>
             <br />
-            <?php apbct_admin__badge__get_premium(); ?>
+            <?php echo $this->prepareTrialBanner(); ?>
         </div>
 
         <!-- Cooling notice -->
@@ -128,6 +128,38 @@ class CleantalkBbPressChecker
         <!-- Pause button -->
         <button class="button" id="ct_pause">Pause check</button>
         <?php
+    }
+
+    private function prepareTrialBanner()
+    {
+        $bb_scanner_preset_name = 'cleantalk-bbpress-spam-scanner';
+        try {
+            // new way, try to get defined preset name form class
+            $utm_presets = \Cleantalk\ApbctWP\LinkConstructor::$utm_presets;
+        } catch (\Exception $e) {
+            //old way
+            $utm_presets = array();
+        }
+
+        if (isset($utm_presets[$bb_scanner_preset_name])) {
+            //preset exists, use it
+            $utm_placement = $bb_scanner_preset_name;
+        } else {
+            // if not - use default for checkers
+            $utm_placement = 'checkers';
+        }
+
+        try {
+            // try to call apbct function
+            $make_it_right_banner = apbct_admin__badge__get_premium($utm_placement);
+            if (!empty($make_it_right_banner)) {
+                $make_it_right_banner = '<p class="notice notice-info" style="padding-bottom: 10px;">' . $make_it_right_banner . '</p>';
+            }
+        } catch (\Exception $e) {
+            $make_it_right_banner = '';
+        }
+
+        return empty($make_it_right_banner) ? '' : $make_it_right_banner;
     }
 
     public static function ct_ajax_clear_topics(){
