@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'echo "::error::Command failed on line ${LINENO}: ${BASH_COMMAND}"' ERR
 
 PLUGIN_FILE="${INPUT_PLUGIN_FILE}"
 README_FILE="${INPUT_README_FILE}"
@@ -20,7 +21,15 @@ warn() { echo "::warning::$1"; }
 error_annot() { echo "::error::$1"; }
 append_summary() { printf '%s\n' "$1" >> "$SUMMARY_FILE"; }
 
-escape_html() {
+escape_html_file() {
+  python3 - <<'PY' "$1"
+from pathlib import Path
+import html, sys
+print(html.escape(Path(sys.argv[1]).read_text(encoding='utf-8')))
+PY
+}
+
+escape_html_text() {
   python3 - <<'PY' "$1"
 import html, sys
 print(html.escape(sys.argv[1]))
@@ -30,30 +39,49 @@ PY
 send_matrix() {
   local body="$1"
   local formatted="${2:-}"
+
+  # If Matrix is not configured, silently skip notifications.
   [[ -n "$MATRIX_SERVER" && -n "$MATRIX_ROOM" && -n "$MATRIX_TOKEN" ]] || return 0
+
   python3 - "$MATRIX_SERVER" "$MATRIX_ROOM" "$MATRIX_TOKEN" "$body" "$formatted" <<'PY'
 import json, sys, urllib.request, urllib.parse, uuid
+
 server, room, token, body, formatted = sys.argv[1:6]
 server = server.rstrip('/')
 room = urllib.parse.quote(room, safe='')
 txn = urllib.parse.quote(uuid.uuid4().hex, safe='')
-token = urllib.parse.quote(token, safe='')
-url = f"{server}/_matrix/client/v3/rooms/{room}/send/m.room.message/{txn}?access_token={token}"
+url = f"{server}/_matrix/client/v3/rooms/{room}/send/m.room.message/{txn}"
+
 payload = {"msgtype": "m.text", "body": body}
 if formatted:
     payload["format"] = "org.matrix.custom.html"
     payload["formatted_body"] = formatted
-req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}, method="PUT")
-with urllib.request.urlopen(req, timeout=30) as response:
-    response.read()
+
+req = urllib.request.Request(
+    url,
+    data=json.dumps(payload).encode(),
+    headers={
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
+    },
+    method="PUT",
+)
+
+try:
+    with urllib.request.urlopen(req, timeout=30) as response:
+        response.read()
+except urllib.error.HTTPError as e:
+    detail = e.read().decode('utf-8', errors='replace')
+    raise SystemExit(f"Matrix send failed with HTTP {e.code}: {detail}")
 PY
 }
 
 fail() {
   local msg="$1"
   error_annot "$msg"
-  append_summary "## Error\n- $msg\n"
-  send_matrix "Make changelog failed: $msg" "<strong>Make changelog failed</strong><br>$(escape_html "$msg")"
+  append_summary "## Error"
+  append_summary "- $msg"
+  send_matrix "Make changelog failed: $msg" "<strong>Make changelog failed</strong><br>$(escape_html_text "$msg")" || true
   exit 1
 }
 
@@ -86,53 +114,89 @@ get_stable_tag() {
   printf '%s' "$stable"
 }
 
-find_version_boundary() {
-  local version="$1"
-  local escaped_version
-  escaped_version="${version//./\\.}"
-  local commits commit content current previous
+find_version_range() {
+  local current_version="$1"
+
   mapfile -t commits < <(git log --format='%H' -- "$PLUGIN_FILE")
   [[ ${#commits[@]} -gt 0 ]] || fail "No git history found for $PLUGIN_FILE"
-  for ((i=0; i<${#commits[@]}; i++)); do
-    commit="${commits[$i]}"
-    content="$(git show "${commit}:${PLUGIN_FILE}" 2>/dev/null || true)"
-    [[ -n "$content" ]] || continue
-    current="$(printf '%s\n' "$content" | sed -nE 's/^\s*Version:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$/\1/p' | head -n1)"
-    [[ "$current" == "$version" ]] || continue
-    if (( i + 1 < ${#commits[@]} )); then
-      previous="$(git show "${commits[$((i+1))]}:${PLUGIN_FILE}" 2>/dev/null | sed -nE 's/^\s*Version:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$/\1/p' | head -n1)"
-      if [[ "$previous" != "$version" ]]; then
-        printf '%s' "$commit"
-        return 0
-      fi
-    else
-      printf '%s' "$commit"
-      return 0
+
+  local current_commit=""
+  local previous_version=""
+  local previous_commit=""
+  local commit version
+  local seen_current=0
+  local seen_previous=0
+
+  for commit in "${commits[@]}"; do
+    version="$(git show "${commit}:${PLUGIN_FILE}" 2>/dev/null | sed -nE 's/^\s*Version:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$/\1/p' | head -n1)"
+    [[ -n "$version" ]] || continue
+
+    # Find the first commit in history that has the current version.
+    if [[ "$seen_current" -eq 0 && "$version" == "$current_version" ]]; then
+      current_commit="$commit"
+      seen_current=1
+      continue
+    fi
+
+    # After leaving current version zone, remember which version comes next.
+    if [[ "$seen_current" -eq 1 && -z "$previous_version" && "$version" != "$current_version" ]]; then
+      previous_version="$version"
+      previous_commit="$commit"
+      seen_previous=1
+      continue
+    fi
+
+    # Keep moving while we are still inside the same previous version zone.
+    if [[ "$seen_previous" -eq 1 && "$version" == "$previous_version" ]]; then
+      previous_commit="$commit"
+      continue
+    fi
+
+    # Once previous version zone is over, stop.
+    if [[ "$seen_previous" -eq 1 && "$version" != "$previous_version" ]]; then
+      break
     fi
   done
-  fail "Could not find the commit where version $version was introduced"
+
+  [[ -n "$current_commit" ]] || fail "Could not find commit for current version $current_version"
+  [[ -n "$previous_version" ]] || fail "Could not determine previous version before $current_version"
+  [[ -n "$previous_commit" ]] || fail "Could not find commit for previous version $previous_version"
+
+  printf '%s\t%s\t%s\n' "$previous_commit" "$current_commit" "$previous_version"
 }
 
 validate_release_subject() {
   local sha="$1"
   local subject="$2"
-  local marker_count
-  marker_count="$(printf '%s' "$subject" | grep -oE '\{to_release:[[:space:]]*[0-9]+\}' | wc -l | tr -d ' ')"
+  local marker_matches marker_count
+
+  marker_matches="$(printf '%s' "$subject" | grep -oE '\{to_release:[[:space:]]*[0-9]+\}' || true)"
+  marker_count="$(printf '%s\n' "$marker_matches" | sed '/^$/d' | wc -l | tr -d ' ')"
+
   if [[ "$marker_count" -gt 1 ]]; then
     fail "Commit $sha contains more than one {to_release: ...} marker"
   fi
+
   if [[ "$marker_count" -eq 1 ]] && ! printf '%s' "$subject" | grep -Eq '^\{to_release:[[:space:]]*[0-9]+\}[[:space:]]+(Fix|Upd|New)\..+$'; then
     fail "Commit $sha has invalid release subject: $subject"
   fi
 }
 
 collect_release_entries() {
-  local boundary_commit="$1"
+  local previous_commit="$1"
+  local current_commit="$2"
+
   : > "$ENTRIES_FILE"
-  local found=0 sha subject parsed task kind text line
+
+  local found=0
+  local sha subject parsed task kind text line
+
+  # We collect commits strictly between previous version and current version.
   while IFS=$'\x1f' read -r sha subject; do
     [[ -n "$sha" ]] || continue
+
     validate_release_subject "$sha" "$subject"
+
     if printf '%s' "$subject" | grep -Eq '^\{to_release:[[:space:]]*[0-9]+\}[[:space:]]+(Fix|Upd|New)\..+$'; then
       parsed="$(python3 - <<'PY' "$subject"
 import re, sys
@@ -142,20 +206,25 @@ if m:
     print('\t'.join(m.groups()))
 PY
 )"
+      [[ -n "$parsed" ]] || fail "Could not parse release subject in commit $sha: $subject"
+
       IFS=$'\t' read -r task kind text <<< "$parsed"
       text="$(trim "$text")"
       line="${kind}. ${text} [https://app.doboard.com/1/task/${task}](https://app.doboard.com/1/task/${task})"
       printf '%s\n' "$line" >> "$ENTRIES_FILE"
       found=1
     fi
-  done < <(git log --first-parent --format='%H%x1f%s' "${boundary_commit}..HEAD")
-  [[ "$found" -eq 1 ]] || fail "No valid release commits found after version boundary"
+  done < <(git log --first-parent --format='%H%x1f%s' "${previous_commit}..HEAD")
+
+  [[ "$found" -eq 1 ]] || fail "No valid release commits found between previous and current version boundaries"
+
   sort -o "$ENTRIES_FILE" "$ENTRIES_FILE"
 }
 
 build_changelog_block() {
   local version="$1"
   local when="$2"
+
   {
     printf '= %s %s =\n' "$version" "$when"
     while IFS= read -r entry; do
@@ -166,37 +235,128 @@ build_changelog_block() {
 
 rewrite_readme() {
   local version="$1"
+
   python3 - <<'PY' "$README_FILE" "$BLOCK_FILE" "$version"
 from pathlib import Path
 import re, sys
+
 readme_path = Path(sys.argv[1])
 block_path = Path(sys.argv[2])
 version = sys.argv[3]
+
 text = readme_path.read_text(encoding='utf-8')
 block = block_path.read_text(encoding='utf-8').rstrip() + '\n\n'
-text_new = re.sub(r'^Stable tag:\s*.*$', f'Stable tag: {version}', text, count=1, flags=re.MULTILINE)
-if text_new == text:
+
+# Update Stable tag. If the value is already the same, this still counts as a successful match.
+text, stable_replacements = re.subn(
+    r'^Stable tag:\s*.*$',
+    f'Stable tag: {version}',
+    text,
+    count=1,
+    flags=re.MULTILINE,
+)
+if stable_replacements == 0:
     raise SystemExit('Stable tag not found for replacement')
-pattern = re.compile(r'(== Changelog ==\n\n)(.*?)(\n(?== [A-Z][a-z]+ ==)|\Z)', re.S)
-m = pattern.search(text_new)
-if not m:
+
+# Changelog section must exist.
+changelog_header = '== Changelog ==\n\n'
+header_pos = text.find(changelog_header)
+if header_pos == -1:
     raise SystemExit('Changelog section not found')
-replacement = m.group(1) + block + (m.group(3) if m.group(3).startswith('\n== ') else '')
-text_new = text_new[:m.start()] + replacement + text_new[m.end():]
-readme_path.write_text(text_new, encoding='utf-8')
+
+# Split file into three parts:
+# 1. everything before changelog content,
+# 2. changelog content itself,
+# 3. the next top-level section or end of file.
+content_start = header_pos + len(changelog_header)
+next_section_match = re.search(r'^== [^=].* ==\s*$', text[content_start:], flags=re.MULTILINE)
+if next_section_match:
+    content_end = content_start + next_section_match.start()
+else:
+    content_end = len(text)
+
+before = text[:content_start]
+changelog_content = text[content_start:content_end]
+after = text[content_end:]
+
+# Parse changelog line by line and preserve all old version blocks.
+lines = changelog_content.splitlines(keepends=True)
+version_header_re = re.compile(r'^= (\d+\.\d+\.\d+) [A-Z][a-z]{2} \d{1,2} \d{4} =$')
+
+blocks = []
+current_header = None
+current_lines = []
+
+for raw_line in lines:
+    line = raw_line.rstrip('\n')
+    if version_header_re.match(line):
+        if current_header is not None:
+            blocks.append((current_header, ''.join(current_lines).rstrip('\n')))
+        current_header = line
+        current_lines = [raw_line]
+    else:
+        if current_header is None:
+            # Preserve any loose text before the first version block.
+            blocks.append((None, raw_line.rstrip('\n')))
+        else:
+            current_lines.append(raw_line)
+
+if current_header is not None:
+    blocks.append((current_header, ''.join(current_lines).rstrip('\n')))
+
+new_header = block.splitlines()[0]
+updated = False
+result_parts = []
+inserted = False
+
+for header, body in blocks:
+    if header is None:
+        # Preserve loose text as-is.
+        if body:
+            result_parts.append(body.rstrip('\n'))
+        continue
+
+    # If current version block already exists, replace only this block.
+    if header == new_header:
+        result_parts.append(block.rstrip('\n'))
+        updated = True
+        inserted = True
+    else:
+        # If we haven't inserted the new current version block yet,
+        # put it before the first older version block.
+        if not inserted:
+            result_parts.append(block.rstrip('\n'))
+            inserted = True
+        result_parts.append(body)
+
+# If changelog was empty, or no version blocks existed yet, insert current block.
+if not inserted:
+    result_parts.append(block.rstrip('\n'))
+
+new_changelog_content = '\n\n'.join(part.rstrip('\n') for part in result_parts if part != '')
+if new_changelog_content:
+    new_changelog_content += '\n\n'
+
+text = before + new_changelog_content + after.lstrip('\n')
+readme_path.write_text(text, encoding='utf-8')
 PY
 }
 
 append_job_summary() {
   local version="$1"
   local stable="$2"
-  local boundary="$3"
+  local previous_commit="$3"
+  local current_commit="$4"
+  local previous_version="$5"
+
   append_summary "# Make changelog"
   append_summary ""
   append_summary "## Validation"
   append_summary "- Plugin version: \\`${version}\\`"
-  append_summary "- Stable tag before update: \\`${stable}\\`"
-  append_summary "- Version boundary commit: \\`${boundary}\\`"
+  append_summary "- Stable tag at workflow start: \\`${stable}\\`"
+  append_summary "- Previous version: \\`${previous_version}\\`"
+  append_summary "- Previous version commit: \\`${previous_commit}\\`"
+  append_summary "- Current version commit: \\`${current_commit}\\`"
   append_summary ""
   append_summary "## Entries"
   while IFS= read -r entry; do
@@ -214,55 +374,74 @@ send_stage_notice() {
   local stage="$1"
   local text="$2"
   notice "$stage: $text"
-  send_matrix "${stage}: ${text}" "<strong>${stage}</strong><br>$(escape_html "$text")"
+  send_matrix "${stage}: ${text}" "<strong>${stage}</strong><br>$(escape_html_text "$text")" || true
 }
 
 commit_and_push() {
   local version="$1"
   local message="${AUTO_COMMIT_MESSAGE:-chore(changelog): rebuild readme for v${version} [skip ci]}"
+
   if git diff --quiet -- "$README_FILE"; then
     warn "No readme changes detected after rebuild"
-    append_summary "## Commit\n- No changes to commit.\n"
+    append_summary "## Commit"
+    append_summary "- No changes to commit."
     return 0
   fi
+
   git config user.name 'github-actions[bot]'
   git config user.email 'github-actions[bot]@users.noreply.github.com'
   git add "$README_FILE"
   git commit -m "$message"
   git push origin "HEAD:${TARGET_BRANCH}"
-  append_summary "## Commit\n- Changes committed and pushed to \\`${TARGET_BRANCH}\\`.\n"
+
+  append_summary "## Commit"
+  append_summary "- Changes committed and pushed to \\`${TARGET_BRANCH}\\`."
 }
 
 main() {
   require_file "$PLUGIN_FILE"
   require_file "$README_FILE"
-  append_summary ""
+
   send_stage_notice "Start" "Workflow started for branch ${TARGET_BRANCH}."
 
-  local version stable boundary date_now
+  local version stable previous_commit current_commit previous_version date_now range_info
+
   version="$(get_plugin_version)"
   stable="$(get_stable_tag)"
-  [[ "$stable" == "$version" ]] || fail "Stable tag ${stable} does not match plugin version ${version} before rebuild"
 
   send_stage_notice "Parsing" "Detected plugin version ${version}."
-  boundary="$(find_version_boundary "$version")"
-  send_stage_notice "Validation" "Found version boundary at ${boundary}."
 
-  collect_release_entries "$boundary"
+  if [[ "$stable" == "$version" ]]; then
+    notice "Stable tag already matches plugin version ${version}. Continuing."
+    append_summary "## Stable tag"
+    append_summary "- Stable tag at workflow start: \\`${stable}\\`."
+    append_summary "- Stable tag already matches plugin version."
+    append_summary ""
+  else
+    warn "Stable tag ${stable} does not match plugin version ${version}. It will be updated."
+    append_summary "## Stable tag"
+    append_summary "- Stable tag at workflow start: \\`${stable}\\`."
+    append_summary "- Plugin version: \\`${version}\\`."
+    append_summary "- Stable tag will be updated during readme rewrite."
+    append_summary ""
+  fi
+
+  range_info="$(find_version_range "$version")"
+  IFS=$'\t' read -r previous_commit current_commit previous_version <<< "$range_info"
+
+  send_stage_notice "Validation" "Using range from version ${previous_version} (${previous_commit}) to HEAD for current version ${version}."
+  collect_release_entries "$previous_commit" "$current_commit"
+
   date_now="$(current_date)"
   build_changelog_block "$version" "$date_now"
-  send_stage_notice "Changelog" "Built top changelog block with $(wc -l < "$ENTRIES_FILE" | tr -d ' ') entries."
+  send_stage_notice "Changelog" "Built current version block with $(wc -l < "$ENTRIES_FILE" | tr -d ' ') entries."
 
   rewrite_readme "$version"
-  send_stage_notice "Readme" "Updated Stable tag and top changelog block in ${README_FILE}."
+  send_stage_notice "Readme" "Updated Stable tag and current version changelog block in ${README_FILE}."
 
-  append_job_summary "$version" "$stable" "$boundary"
-  send_matrix "Make changelog entries for v${version}" "<strong>Make changelog entries for v${version}</strong><br><pre>$(python3 - <<'PY' "$BLOCK_FILE"
-from pathlib import Path
-import html, sys
-print(html.escape(Path(sys.argv[1]).read_text(encoding='utf-8')))
-PY
-)</pre>"
+  append_job_summary "$version" "$stable" "$previous_commit" "$current_commit" "$previous_version"
+
+  send_matrix "Make changelog entries for v${version}" "<strong>Make changelog entries for v${version}</strong><br><pre>$(escape_html_file "$BLOCK_FILE")</pre>" || true
 
   commit_and_push "$version"
   send_stage_notice "Success" "Changelog rebuilt successfully for v${version}."
