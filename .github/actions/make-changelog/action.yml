@@ -1,36 +1,41 @@
 name: Make changelog
-description: Rebuild the top changelog block in readme.txt from beta branch history
+description: Build changelog entries from release commits and update readme and changelog files
 inputs:
   plugin_file:
-    description: Main plugin PHP file with Version header
+    description: Path to the main plugin file containing Version header
     required: true
   readme_file:
-    description: WordPress readme file
+    description: Path to WordPress readme file
     required: true
+  changelog_file:
+    description: Path to changelog file
+    required: false
+    default: changelog.txt
   matrix_server:
     description: Matrix homeserver URL
-    required: true
+    required: false
   matrix_room:
-    description: Matrix room id or alias
-    required: true
+    description: Matrix room ID
+    required: false
   matrix_token:
     description: Matrix access token
-    required: true
+    required: false
   target_branch:
-    description: Target branch for auto-commit
+    description: Branch to push generated changelog commit into
     required: false
     default: beta
   auto_commit_message:
-    description: Custom auto-commit message
+    description: Commit message for generated changelog update
     required: false
 runs:
   using: composite
   steps:
-    - name: Run make changelog
+    - name: Run make changelog action
       shell: bash
       env:
         INPUT_PLUGIN_FILE: ${{ inputs.plugin_file }}
         INPUT_README_FILE: ${{ inputs.readme_file }}
+        INPUT_CHANGELOG_FILE: ${{ inputs.changelog_file }}
         INPUT_MATRIX_SERVER: ${{ inputs.matrix_server }}
         INPUT_MATRIX_ROOM: ${{ inputs.matrix_room }}
         INPUT_MATRIX_TOKEN: ${{ inputs.matrix_token }}
