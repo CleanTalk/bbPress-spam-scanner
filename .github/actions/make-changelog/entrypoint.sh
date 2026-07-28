@@ -389,11 +389,13 @@ append_job_summary() {
   append_summary "# Make changelog"
   append_summary ""
   append_summary "## Validation"
-  append_summary "- Plugin version: \\`${version}\\`"
-  append_summary "- Stable tag at workflow start: \\`${stable}\\`"
-  append_summary "- Previous version: \\`${previous_version}\\`"
-  append_summary "- Previous version commit: \\`${previous_commit}\\`"
-  append_summary "- Current version commit: \\`${current_commit}\\`"
+  append_summary "- Plugin version: ${version}"
+  append_summary "- Stable tag at workflow start: ${stable}"
+  append_summary "- Previous version: ${previous_version}"
+  append_summary "- Previous version commit: ${previous_commit}"
+  append_summary "- Current version commit: ${current_commit}"
+  append_summary "- Changes committed and pushed to ${TARGET_BRANCH}."
+  append_summary "- Current version commit: ${current_commit}"
   append_summary ""
   append_summary "## Entries"
   while IFS= read -r entry; do
@@ -432,13 +434,14 @@ commit_and_push() {
   git push origin "HEAD:${TARGET_BRANCH}"
 
   append_summary "## Commit"
-  append_summary "- Changes committed and pushed to \\`${TARGET_BRANCH}\\`."
+  append_summary "- Changes committed and pushed to ${TARGET_BRANCH}."
 }
 
 main() {
   require_file "$PLUGIN_FILE"
   require_file "$README_FILE"
   require_file "$CHANGELOG_FILE"
+  notice "Matrix configured: server=${MATRIX_SERVER:+yes}, room=${MATRIX_ROOM:+yes}, token=${MATRIX_TOKEN:+yes}"
 
   send_stage_notice "Start" "Workflow started for branch ${TARGET_BRANCH}."
 
@@ -452,14 +455,14 @@ main() {
   if [[ "$stable" == "$version" ]]; then
     notice "Stable tag already matches plugin version ${version}. Continuing."
     append_summary "## Stable tag"
-    append_summary "- Stable tag at workflow start: \\`${stable}\\`."
+    append_summary "- Stable tag at workflow start: ${stable}."
     append_summary "- Stable tag already matches plugin version."
     append_summary ""
   else
     warn "Stable tag ${stable} does not match plugin version ${version}. It will be updated."
     append_summary "## Stable tag"
-    append_summary "- Stable tag at workflow start: \\`${stable}\\`."
-    append_summary "- Plugin version: \\`${version}\\`."
+    append_summary "- Stable tag at workflow start: ${stable}."
+    append_summary "- Plugin version: ${version}."
     append_summary "- Stable tag will be updated during readme rewrite."
     append_summary ""
   fi
