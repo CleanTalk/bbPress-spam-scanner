@@ -48,5 +48,6 @@ if (
 } else {
 
     // @ToDO we have to display a notice about cleantalk plugin required
+    // @todo this is a test commit for automatic changelog
 
 }
