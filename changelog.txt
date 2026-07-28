@@ -6,7 +6,7 @@
  * Fix. Banner. Cleantalk trial banner fixed.
 
 = 1.0.2 Feb 01 2022 =
- * Fix: Comments checker fixed.
+ * Fix: The comments checker fixed.
  * Fix: WP 5.9.
 
 = 1.0.1 Nov 30 2020 =
