@@ -25,5 +25,5 @@ jobs:
           readme_file: readme.txt
           matrix_server: ${{ secrets.MATRIX_SERVER }}
           matrix_room: ${{ secrets.MATRIX_GITHUB_WORKFLOW_FEED }}
-          matrix_token: ${{ secrets.MATRIX_USER_TOKEN }}
+          matrix_token: ${{ secrets.MATRIX_WORKFLOW_POSTER_TOKEN }}
           target_branch: beta
