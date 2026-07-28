@@ -29,6 +29,9 @@ Please, note that the Anti-Spam by CleanTalk plugin and bbPress plugin should be
 
 == Changelog ==
 
+= 1.0.4 Jul 28 2026 =
+ * New. GitHub. Changelog actions added. [https://app.doboard.com/1/task/38415](https://app.doboard.com/1/task/38415)
+
 = 1.0.3 Jan 15 2026 =
  * Upd. Code. Update compatibility statement.
  * Upd. The jQuery dependencies updated to the current WP and APBCT state on scripts and css enqueueing.
@@ -43,3 +46,4 @@ Please, note that the Anti-Spam by CleanTalk plugin and bbPress plugin should be
 
 = 1.0.0 Nov 24 2020 =
  * First version released.
+
