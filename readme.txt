@@ -4,7 +4,7 @@ Tags: bbpress, spam, cleaner, spam check, spam comments, spam user, spam topics
 Requires at least: 3.0
 Tested up to: 6.9
 Requires PHP: 7.2
-Stable tag: 1.0.3
+Stable tag: 1.0.4
 License: GPLv2
 
 Check existing bbPress topics for spam and move to trash all found spam.
