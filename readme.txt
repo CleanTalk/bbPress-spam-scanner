@@ -31,6 +31,8 @@ Please, note that the Anti-Spam by CleanTalk plugin and bbPress plugin should be
 
 = 1.0.4 Jul 28 2026 =
  * New. GitHub. Changelog actions added. [https://app.doboard.com/1/task/38415](https://app.doboard.com/1/task/38415)
+ * Upd. Test commit #2. [https://app.doboard.com/1/task/38415](https://app.doboard.com/1/task/38415)
+ * Upd. Test commit. [https://app.doboard.com/1/task/38415](https://app.doboard.com/1/task/38415)
 
 = 1.0.3 Jan 15 2026 =
  * Upd. Code. Update compatibility statement.
