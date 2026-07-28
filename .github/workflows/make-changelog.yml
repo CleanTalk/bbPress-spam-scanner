@@ -1,0 +1,29 @@
+name: Make changelog
+
+on:
+  push:
+    branches:
+      - beta
+
+permissions:
+  contents: write
+
+jobs:
+  make-changelog:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Make changelog
+        uses: ./.github/actions/make-changelog
+        with:
+          plugin_file: cleantalk-bbpress-scan.php
+          readme_file: readme.txt
+          matrix_server: ${{ secrets.MATRIX_SERVER }}
+          matrix_room: ${{ secrets.MATRIX_GITHUB_WORKFLOW_FEED }}
+          matrix_token: ${{ secrets.MATRIX_USER_TOKEN }}
+          target_branch: beta
