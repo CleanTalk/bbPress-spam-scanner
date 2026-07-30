@@ -10,6 +10,7 @@ MATRIX_ROOM="${INPUT_MATRIX_ROOM:-}"
 MATRIX_TOKEN="${INPUT_MATRIX_TOKEN:-}"
 TARGET_BRANCH="${INPUT_TARGET_BRANCH:-beta}"
 AUTO_COMMIT_MESSAGE="${INPUT_AUTO_COMMIT_MESSAGE:-}"
+SCRIPT_DIR="${GITHUB_ACTION_PATH:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 
 TMP_DIR="$(mktemp -d)"
 SUMMARY_FILE="${GITHUB_STEP_SUMMARY:-${TMP_DIR}/summary.md}"
@@ -41,34 +42,7 @@ send_matrix() {
   local body="$1"
   local formatted="${2:-}"
   [[ -n "$MATRIX_SERVER" && -n "$MATRIX_ROOM" && -n "$MATRIX_TOKEN" ]] || return 0
-
-  python3 - "$MATRIX_SERVER" "$MATRIX_ROOM" "$MATRIX_TOKEN" "$body" "$formatted" <<'PY'
-import json, sys, urllib.request, urllib.parse, uuid
-server, room, token, body, formatted = sys.argv[1:6]
-server = server.rstrip('/')
-room = urllib.parse.quote(room, safe='')
-txn = urllib.parse.quote(uuid.uuid4().hex, safe='')
-url = f"{server}/_matrix/client/v3/rooms/{room}/send/m.room.message/{txn}"
-payload = {"msgtype": "m.text", "body": body}
-if formatted:
-    payload["format"] = "org.matrix.custom.html"
-    payload["formatted_body"] = formatted
-req = urllib.request.Request(
-    url,
-    data=json.dumps(payload).encode(),
-    headers={
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}",
-    },
-    method="PUT",
-)
-try:
-    with urllib.request.urlopen(req, timeout=30) as response:
-        response.read()
-except urllib.error.HTTPError as e:
-    detail = e.read().decode('utf-8', errors='replace')
-    raise SystemExit(f"Matrix send failed with HTTP {e.code}: {detail}")
-PY
+  python3 "$SCRIPT_DIR/matrix_send.py" "$MATRIX_SERVER" "$MATRIX_ROOM" "$MATRIX_TOKEN" "$body" "$formatted"
 }
 
 fail() {
@@ -220,163 +194,12 @@ build_changelog_block() {
 
 rewrite_readme() {
   local version="$1"
-
-  python3 - <<'PY' "$README_FILE" "$BLOCK_FILE" "$version"
-from pathlib import Path
-import re, sys
-
-readme_path = Path(sys.argv[1])
-block_path = Path(sys.argv[2])
-version = sys.argv[3]
-
-text = readme_path.read_text(encoding='utf-8')
-block = block_path.read_text(encoding='utf-8').rstrip() + '\n\n'
-
-text, stable_replacements = re.subn(
-    r'^Stable tag:\s*.*$',
-    f'Stable tag: {version}',
-    text,
-    count=1,
-    flags=re.MULTILINE,
-)
-if stable_replacements == 0:
-    raise SystemExit('Stable tag not found for replacement')
-
-changelog_header = '== Changelog ==\n\n'
-header_pos = text.find(changelog_header)
-if header_pos == -1:
-    raise SystemExit('Changelog section not found')
-
-content_start = header_pos + len(changelog_header)
-next_section_match = re.search(r'^== [^=].* ==\s*$', text[content_start:], flags=re.MULTILINE)
-if next_section_match:
-    content_end = content_start + next_section_match.start()
-else:
-    content_end = len(text)
-
-before = text[:content_start]
-changelog_content = text[content_start:content_end]
-after = text[content_end:]
-
-lines = changelog_content.splitlines(keepends=True)
-version_header_re = re.compile(r'^= (\d+\.\d+\.\d+) [A-Z][a-z]{2} \d{1,2} \d{4} =$')
-
-blocks = []
-current_header = None
-current_lines = []
-
-for raw_line in lines:
-    line = raw_line.rstrip('\n')
-    if version_header_re.match(line):
-        if current_header is not None:
-            blocks.append((current_header, ''.join(current_lines).rstrip('\n')))
-        current_header = line
-        current_lines = [raw_line]
-    else:
-        if current_header is None:
-            blocks.append((None, raw_line.rstrip('\n')))
-        else:
-            current_lines.append(raw_line)
-
-if current_header is not None:
-    blocks.append((current_header, ''.join(current_lines).rstrip('\n')))
-
-new_header = block.splitlines()[0]
-result_parts = []
-inserted = False
-
-for header, body in blocks:
-    if header is None:
-        if body:
-            result_parts.append(body.rstrip('\n'))
-        continue
-
-    if header == new_header:
-        result_parts.append(block.rstrip('\n'))
-        inserted = True
-    else:
-        if not inserted:
-            result_parts.append(block.rstrip('\n'))
-            inserted = True
-        result_parts.append(body)
-
-if not inserted:
-    result_parts.append(block.rstrip('\n'))
-
-new_changelog_content = '\n\n'.join(part.rstrip('\n') for part in result_parts if part != '')
-if new_changelog_content:
-    new_changelog_content += '\n\n'
-
-text = before + new_changelog_content + after.lstrip('\n')
-readme_path.write_text(text, encoding='utf-8')
-PY
+  python3 "$SCRIPT_DIR/changelog_rewrite.py" --mode readme --file "$README_FILE" --block-file "$BLOCK_FILE" --version "$version"
 }
 
 rewrite_changelog_file() {
   local version="$1"
-
-  python3 - <<'PY' "$CHANGELOG_FILE" "$BLOCK_FILE" "$version"
-from pathlib import Path
-import re, sys
-
-changelog_path = Path(sys.argv[1])
-block_path = Path(sys.argv[2])
-version = sys.argv[3]
-
-text = changelog_path.read_text(encoding='utf-8')
-block = block_path.read_text(encoding='utf-8').rstrip() + '\n\n'
-
-lines = text.splitlines(keepends=True)
-version_header_re = re.compile(r'^= (\d+\.\d+\.\d+) [A-Z][a-z]{2} \d{1,2} \d{4} =$')
-
-blocks = []
-current_header = None
-current_lines = []
-
-for raw_line in lines:
-    line = raw_line.rstrip('\n')
-    if version_header_re.match(line):
-        if current_header is not None:
-            blocks.append((current_header, ''.join(current_lines).rstrip('\n')))
-        current_header = line
-        current_lines = [raw_line]
-    else:
-        if current_header is None:
-            if raw_line.strip():
-                blocks.append((None, raw_line.rstrip('\n')))
-        else:
-            current_lines.append(raw_line)
-
-if current_header is not None:
-    blocks.append((current_header, ''.join(current_lines).rstrip('\n')))
-
-new_header = block.splitlines()[0]
-result_parts = []
-inserted = False
-
-for header, body in blocks:
-    if header is None:
-        result_parts.append(body.rstrip('\n'))
-        continue
-
-    if header == new_header:
-        result_parts.append(block.rstrip('\n'))
-        inserted = True
-    else:
-        if not inserted:
-            result_parts.append(block.rstrip('\n'))
-            inserted = True
-        result_parts.append(body)
-
-if not inserted:
-    result_parts.append(block.rstrip('\n'))
-
-new_text = '\n\n'.join(part.rstrip('\n') for part in result_parts if part != '')
-if new_text:
-    new_text += '\n'
-
-changelog_path.write_text(new_text, encoding='utf-8')
-PY
+  python3 "$SCRIPT_DIR/changelog_rewrite.py" --mode changelog --file "$CHANGELOG_FILE" --block-file "$BLOCK_FILE" --version "$version"
 }
 
 append_job_summary() {
