@@ -1,0 +1,51 @@
+name: Publish to WordPress SVN
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Final release version for SVN tag, for example 1.0.4"
+        required: true
+      beta_tag:
+        description: "GitHub beta release tag to fetch the prepared asset from"
+        required: true
+        default: "beta-version"
+      asset_name:
+        description: "Prepared ZIP asset name from beta release"
+        required: true
+        default: "cleantalk-bbpress-spam-scanner.zip"
+      dry_run:
+        description: "Run in dry-run mode"
+        required: true
+        default: "true"
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  svn-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Publish to SVN from beta asset
+        uses: ./.github/actions/deploy-wordpress-svn
+        with:
+          version: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.version }}
+          beta_tag: ${{ github.event_name == 'release' && 'beta-version' || inputs.beta_tag }}
+          asset_name: ${{ github.event_name == 'release' && 'cleantalk-bbpress-spam-scanner.zip' || inputs.asset_name }}
+          dry_run: ${{ github.event_name == 'release' && 'false' || inputs.dry_run }}
+          svn_username: ${{ secrets.SVN_USERNAME }}
+          svn_password: ${{ secrets.SVN_PASSWORD }}
+          svn_url: ${{ secrets.SVN_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          matrix_server: ${{ secrets.MATRIX_SERVER }}
+          matrix_room: ${{ secrets.MATRIX_ROOM }}
+          matrix_token: ${{ secrets.MATRIX_TOKEN }}
