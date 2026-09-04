@@ -25,16 +25,13 @@ error_annot() { echo "::error::$1"; }
 append_summary() { printf '%s\n' "$1" >> "$SUMMARY_FILE"; }
 
 escape_html_text() {
-  python3 - <<'PY' "$1"
-import html, sys
-print(html.escape(sys.argv[1]))
-PY
+  python3 "$SCRIPT_DIR/utils.py" escape-text "$1"
 }
 
 send_matrix() {
   local body="$1"
   local formatted="${2:-}"
-  python3 "$SCRIPT_DIR/matrix_notify.py" "$MATRIX_SERVER" "$MATRIX_ROOM" "$MATRIX_TOKEN" "$body" "$formatted"
+  python3 "$SCRIPT_DIR/matrix_send.py" "$MATRIX_SERVER" "$MATRIX_ROOM" "$MATRIX_TOKEN" "$body" "$formatted"
 }
 
 log_stage() {

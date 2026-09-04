@@ -24,18 +24,11 @@ error_annot() { echo "::error::$1"; }
 append_summary() { printf '%s\n' "$1" >> "$SUMMARY_FILE"; }
 
 escape_html_file() {
-  python3 - <<'PY' "$1"
-from pathlib import Path
-import html, sys
-print(html.escape(Path(sys.argv[1]).read_text(encoding='utf-8')))
-PY
+  python3 "$SCRIPT_DIR/utils.py" escape-file "$1"
 }
 
 escape_html_text() {
-  python3 - <<'PY' "$1"
-import html, sys
-print(html.escape(sys.argv[1]))
-PY
+  python3 "$SCRIPT_DIR/utils.py" escape-text "$1"
 }
 
 send_matrix() {
@@ -160,14 +153,7 @@ collect_release_entries() {
     validate_release_subject "$sha" "$subject"
 
     if printf '%s' "$subject" | grep -Eq '^\{to_release:[[:space:]]*[0-9]+\}[[:space:]]+(Fix|Upd|New)\..+$'; then
-      parsed="$(python3 - <<'PY' "$subject"
-import re, sys
-subject = sys.argv[1]
-m = re.match(r'^\{to_release:\s*(\d+)\}\s+(Fix|Upd|New)\.\s*(.+)$', subject)
-if m:
-    print('\t'.join(m.groups()))
-PY
-)"
+      parsed="$(python3 "$SCRIPT_DIR/utils.py" parse-subject "$subject")"
       [[ -n "$parsed" ]] || fail "Could not parse release subject in commit $sha: $subject"
       IFS=$'\t' read -r task kind text <<< "$parsed"
       text="$(trim "$text")"
