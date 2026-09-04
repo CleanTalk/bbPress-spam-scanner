@@ -16,7 +16,7 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 /**
- * Check if cleantalk-spam-protect and bbpress are active
+ * Check if cleantalk-spam-protect and bbpress are active.
  **/
 if (
     in_array( 'cleantalk-spam-protect/cleantalk.php', apply_filters( 'active_plugins', get_option( 'active_plugins' ) ) ) &&
