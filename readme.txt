@@ -30,7 +30,7 @@ Please, note that the Anti-Spam by CleanTalk plugin and bbPress plugin should be
 == Changelog ==
 
 = 1.0.43 Jul 30 2026 =
- * Upd. Code. Flow dependency refactored. [https://app.doboard.com/1/task/38412](https://app.doboard.com/1/task/38412)
+ * Upd. Dot added. [https://app.doboard.com/1/task/38412](https://app.doboard.com/1/task/38412)
 
 = 1.0.42 Jul 30 2026 =
  * Upd. Code. Changelog auto-construct updated. [https://app.doboard.com/1/task/38415](https://app.doboard.com/1/task/38415)
