@@ -4,7 +4,7 @@ Tags: bbpress, spam, cleaner, spam check, spam comments, spam user, spam topics
 Requires at least: 3.0
 Tested up to: 6.9
 Requires PHP: 7.2
-Stable tag: 1.0.43
+Stable tag: 1.0.44
 License: GPLv2
 
 Check existing bbPress topics for spam and move to trash all found spam.
@@ -28,6 +28,10 @@ Please, note that the Anti-Spam by CleanTalk plugin and bbPress plugin should be
 1. The scanner available on the Comments submenu.
 
 == Changelog ==
+
+= 1.0.44 Sep 04 2026 =
+ * Upd. Version updated. Dot removed. [https://app.doboard.com/1/task/38412](https://app.doboard.com/1/task/38412)
+ * Upd. Dot added. [https://app.doboard.com/1/task/38412](https://app.doboard.com/1/task/38412)
 
 = 1.0.43 Jul 30 2026 =
  * Upd. Dot added. [https://app.doboard.com/1/task/38412](https://app.doboard.com/1/task/38412)

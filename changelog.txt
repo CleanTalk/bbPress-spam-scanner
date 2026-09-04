@@ -1,5 +1,9 @@
 == Changelog ==
 
+= 1.0.44 Sep 04 2026 =
+ * Upd. Version updated. Dot removed. [https://app.doboard.com/1/task/38412](https://app.doboard.com/1/task/38412)
+ * Upd. Dot added. [https://app.doboard.com/1/task/38412](https://app.doboard.com/1/task/38412)
+
 = 1.0.43 Jul 30 2026 =
  * Upd. Dot added. [https://app.doboard.com/1/task/38412](https://app.doboard.com/1/task/38412)
 
