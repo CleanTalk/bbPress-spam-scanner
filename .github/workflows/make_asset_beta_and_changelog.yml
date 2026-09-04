@@ -17,6 +17,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: beta
           fetch-depth: 0
 
       - name: Build changelog files
@@ -39,6 +40,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: beta
           fetch-depth: 0
 
       - name: Install dependencies
