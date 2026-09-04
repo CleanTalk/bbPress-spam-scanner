@@ -3,7 +3,7 @@
   Plugin Name: CleanTalk bbPress spam scanner
   Plugin URI: https://cleantalk.org
   Description: Check existing bbPress topics for spam and move to trash all found spam.
-  Version: 1.0.43
+  Version: 1.0.44
   Author: CleanTalk <welcome@cleantalk.org>
   Author URI: https://cleantalk.org
   Text Domain: cleantalk-bbpress-scan
@@ -16,7 +16,7 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 /**
- * Check if cleantalk-spam-protect and bbpress are active.
+ * Check if cleantalk-spam-protect and bbpress are active
  **/
 if (
     in_array( 'cleantalk-spam-protect/cleantalk.php', apply_filters( 'active_plugins', get_option( 'active_plugins' ) ) ) &&
