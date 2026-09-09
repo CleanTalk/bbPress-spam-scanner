@@ -30,6 +30,7 @@ Please, note that the Anti-Spam by CleanTalk plugin and bbPress plugin should be
 == Changelog ==
 
 = 1.0.45 Sep 04 2026 =
+ * Upd. Copilot sanize work. [https://app.doboard.com/1/task/38412](https://app.doboard.com/1/task/38412)
  * Upd. Beta branch is set up. [https://app.doboard.com/1/task/38412](https://app.doboard.com/1/task/38412)
 
 = 1.0.44 Sep 04 2026 =
