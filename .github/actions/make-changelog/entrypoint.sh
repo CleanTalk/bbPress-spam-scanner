@@ -16,6 +16,12 @@ TMP_DIR="$(mktemp -d)"
 SUMMARY_FILE="${GITHUB_STEP_SUMMARY:-${TMP_DIR}/summary.md}"
 ENTRIES_FILE="${TMP_DIR}/entries.txt"
 BLOCK_FILE="${TMP_DIR}/block.txt"
+SKIPPED_FILE="${TMP_DIR}/skipped.txt"
+: > "$SKIPPED_FILE"
+MATRIX_LOG_TXT="${TMP_DIR}/matrix.txt"
+MATRIX_LOG_HTML="${TMP_DIR}/matrix.html"
+: > "$MATRIX_LOG_TXT"
+: > "$MATRIX_LOG_HTML"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 notice() { echo "::notice::$1"; }
@@ -24,18 +30,11 @@ error_annot() { echo "::error::$1"; }
 append_summary() { printf '%s\n' "$1" >> "$SUMMARY_FILE"; }
 
 escape_html_file() {
-  python3 - <<'PY' "$1"
-from pathlib import Path
-import html, sys
-print(html.escape(Path(sys.argv[1]).read_text(encoding='utf-8')))
-PY
+  python3 "$SCRIPT_DIR/utils.py" escape-file "$1"
 }
 
 escape_html_text() {
-  python3 - <<'PY' "$1"
-import html, sys
-print(html.escape(sys.argv[1]))
-PY
+  python3 "$SCRIPT_DIR/utils.py" escape-text "$1"
 }
 
 send_matrix() {
@@ -45,17 +44,26 @@ send_matrix() {
   python3 "$SCRIPT_DIR/matrix_send.py" "$MATRIX_SERVER" "$MATRIX_ROOM" "$MATRIX_TOKEN" "$body" "$formatted"
 }
 
+flush_matrix() {
+  local header="$1"
+  local body_txt formatted
+  body_txt="${header}"$'\n\n'"$(cat "$MATRIX_LOG_TXT")"
+  formatted="<strong>${header}</strong><br><ul>$(cat "$MATRIX_LOG_HTML")</ul>"
+  send_matrix "$body_txt" "$formatted" || true
+}
+
 fail() {
   local msg="$1"
-  error_annot "$msg"
-  append_summary "## Error"
+  warn "$msg"
+  append_summary "## Warning"
   append_summary "- $msg"
-  send_matrix "Make changelog failed: $msg" "<strong>Make changelog failed</strong><br>$(escape_html_text "$msg")" || true
-  exit 1
+  printf 'SKIP: %s\n' "$msg" >> "$MATRIX_LOG_TXT"
+  printf '<li><strong>SKIP</strong>: %s</li>\n' "$(escape_html_text "$msg")" >> "$MATRIX_LOG_HTML"
+  return 1
 }
 
 require_file() {
-  [[ -f "$1" ]] || fail "Required file not found: $1"
+  [[ -f "$1" ]] || { fail "Required file not found: $1"; return 1; }
 }
 
 trim() {
@@ -72,14 +80,14 @@ current_date() {
 get_plugin_version() {
   local version
   version="$(sed -nE 's/^\s*Version:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$/\1/p' "$PLUGIN_FILE" | head -n1)"
-  [[ -n "$version" ]] || fail "Could not read Version from $PLUGIN_FILE"
+  [[ -n "$version" ]] || { fail "Could not read Version from $PLUGIN_FILE"; return 1; }
   printf '%s' "$version"
 }
 
 get_stable_tag() {
   local stable
   stable="$(sed -nE 's/^Stable tag:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$/\1/p' "$README_FILE" | head -n1)"
-  [[ -n "$stable" ]] || fail "Could not read Stable tag from $README_FILE"
+  [[ -n "$stable" ]] || { fail "Could not read Stable tag from $README_FILE"; return 1; }
   printf '%s' "$stable"
 }
 
@@ -87,7 +95,7 @@ find_version_range() {
   local current_version="$1"
 
   mapfile -t commits < <(git log --format='%H' -- "$PLUGIN_FILE")
-  [[ ${#commits[@]} -gt 0 ]] || fail "No git history found for $PLUGIN_FILE"
+  [[ ${#commits[@]} -gt 0 ]] || { fail "No git history found for $PLUGIN_FILE"; return 1; }
 
   local current_commit=""
   local previous_version=""
@@ -123,61 +131,58 @@ find_version_range() {
     fi
   done
 
-  [[ -n "$current_commit" ]] || fail "Could not find commit for current version $current_version"
-  [[ -n "$previous_version" ]] || fail "Could not determine previous version before $current_version"
-  [[ -n "$previous_commit" ]] || fail "Could not find commit for previous version $previous_version"
+  [[ -n "$current_commit" ]] || { fail "Could not find commit for current version $current_version"; return 1; }
+  [[ -n "$previous_version" ]] || { fail "Could not determine previous version before $current_version"; return 1; }
+  [[ -n "$previous_commit" ]] || { fail "Could not find commit for previous version $previous_version"; return 1; }
 
   printf '%s\t%s\t%s\n' "$previous_commit" "$current_commit" "$previous_version"
 }
 
-validate_release_subject() {
-  local sha="$1"
-  local subject="$2"
-  local marker_matches marker_count
-
-  marker_matches="$(printf '%s' "$subject" | grep -oE '\{to_release:[[:space:]]*[0-9]+\}' || true)"
-  marker_count="$(printf '%s\n' "$marker_matches" | sed '/^$/d' | wc -l | tr -d ' ')"
-
-  if [[ "$marker_count" -gt 1 ]]; then
-    fail "Commit $sha contains more than one {to_release: ...} marker"
-  fi
-
-  if [[ "$marker_count" -eq 1 ]] && ! printf '%s' "$subject" | grep -Eq '^\{to_release:[[:space:]]*[0-9]+\}[[:space:]]+(Fix|Upd|New)\..+$'; then
-    fail "Commit $sha has invalid release subject: $subject"
-  fi
-}
-
 collect_release_entries() {
   local previous_commit="$1"
+  local range sha subject parsed task kind text line marker_matches marker_count
 
   : > "$ENTRIES_FILE"
 
+  if git rev-parse --verify --quiet origin/master >/dev/null && git rev-parse --verify --quiet origin/beta >/dev/null; then
+    range="origin/master..origin/beta"
+  else
+    range="${previous_commit}..HEAD"
+  fi
+
   local found=0
-  local sha subject parsed task kind text line
 
   while IFS=$'\x1f' read -r sha subject; do
     [[ -n "$sha" ]] || continue
-    validate_release_subject "$sha" "$subject"
 
-    if printf '%s' "$subject" | grep -Eq '^\{to_release:[[:space:]]*[0-9]+\}[[:space:]]+(Fix|Upd|New)\..+$'; then
-      parsed="$(python3 - <<'PY' "$subject"
-import re, sys
-subject = sys.argv[1]
-m = re.match(r'^\{to_release:\s*(\d+)\}\s+(Fix|Upd|New)\.\s*(.+)$', subject)
-if m:
-    print('\t'.join(m.groups()))
-PY
-)"
-      [[ -n "$parsed" ]] || fail "Could not parse release subject in commit $sha: $subject"
+    marker_matches="$(printf '%s' "$subject" | grep -oE '\{to_release:[[:space:]]*[0-9]+\}' || true)"
+    marker_count="$(printf '%s\n' "$marker_matches" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+    if [[ "$marker_count" -gt 1 ]] || { [[ "$marker_count" -eq 1 ]] && ! printf '%s' "$subject" | grep -Eq '^\{to_release:[[:space:]]*[0-9]+\}[[:space:]]+(Fix|Upd|New|Code)\..+$'; }; then
+      notice "Skipping commit $sha: invalid release subject ($subject)"
+      printf '%s\t%s\n' "$sha" "$subject" >> "$SKIPPED_FILE"
+      continue
+    fi
+
+    if printf '%s' "$subject" | grep -Eq '^\{to_release:[[:space:]]*[0-9]+\}[[:space:]]+(Fix|Upd|New|Code)\..+$'; then
+      parsed="$(python3 "$SCRIPT_DIR/utils.py" parse-subject "$subject" || true)"
+      if [[ -z "$parsed" ]]; then
+        notice "Skipping commit $sha: could not parse release subject ($subject)"
+        printf '%s\t%s\n' "$sha" "$subject" >> "$SKIPPED_FILE"
+        continue
+      fi
       IFS=$'\t' read -r task kind text <<< "$parsed"
       text="$(trim "$text")"
       line="${kind}. ${text} [https://app.doboard.com/1/task/${task}](https://app.doboard.com/1/task/${task})"
       printf '%s\n' "$line" >> "$ENTRIES_FILE"
       found=1
+    else
+      notice "Skipping commit $sha: subject is not a release note ($subject)"
+      printf '%s\t%s\n' "$sha" "$subject" >> "$SKIPPED_FILE"
     fi
-  done < <(git log --first-parent --format='%H%x1f%s' "${previous_commit}..HEAD")
+  done < <(git log --no-merges --format='%H%x1f%s' "$range")
 
-  [[ "$found" -eq 1 ]] || fail "No valid release commits found between previous version boundary and HEAD"
+  [[ "$found" -eq 1 ]] || { fail "No valid release commits found in ${range}"; return 1; }
 }
 
 build_changelog_block() {
@@ -230,13 +235,34 @@ append_job_summary() {
   cat "$BLOCK_FILE" >> "$SUMMARY_FILE"
   append_summary '```'
   append_summary ""
+
+  if [[ -s "$SKIPPED_FILE" ]]; then
+    append_summary "## Skipped commits"
+    append_summary "Commits that did not match {to_release:N} Fix./Upd./New./Code.:"
+    append_summary ""
+    append_summary '| SHA | Subject |'
+    append_summary '|-----|---------|'
+    while IFS=$'\t' read -r sha subj; do
+      subj="${subj//|/\\|}"
+      append_summary "| \`${sha:0:12}\` | ${subj} |"
+    done < "$SKIPPED_FILE"
+    append_summary ""
+  fi
 }
 
 send_stage_notice() {
   local stage="$1"
   local text="$2"
   notice "$stage: $text"
-  send_matrix "${stage}: ${text}" "<strong>${stage}</strong><br>$(escape_html_text "$text")" || true
+  printf '%s: %s\n' "$stage" "$text" >> "$MATRIX_LOG_TXT"
+  printf '<li><strong>%s</strong>: %s</li>\n' "$stage" "$(escape_html_text "$text")" >> "$MATRIX_LOG_HTML"
+}
+
+append_matrix_block() {
+  local title="$1"
+  local file="$2"
+  printf '%s:\n%s\n' "$title" "$(cat "$file")" >> "$MATRIX_LOG_TXT"
+  printf '<li><strong>%s</strong>:<pre>%s</pre></li>\n' "$title" "$(escape_html_file "$file")" >> "$MATRIX_LOG_HTML"
 }
 
 commit_and_push() {
@@ -260,18 +286,15 @@ commit_and_push() {
   append_summary "- Changes committed and pushed to ${TARGET_BRANCH}."
 }
 
-main() {
-  require_file "$PLUGIN_FILE"
-  require_file "$README_FILE"
-  require_file "$CHANGELOG_FILE"
-  notice "Matrix configured: server=${MATRIX_SERVER:+yes}, room=${MATRIX_ROOM:+yes}, token=${MATRIX_TOKEN:+yes}"
-
-  send_stage_notice "Start" "Workflow started for branch ${TARGET_BRANCH}."
+run_changelog() {
+  require_file "$PLUGIN_FILE" || return 1
+  require_file "$README_FILE" || return 1
+  require_file "$CHANGELOG_FILE" || return 1
 
   local version stable previous_commit current_commit previous_version date_now range_info
 
-  version="$(get_plugin_version)"
-  stable="$(get_stable_tag)"
+  version="$(get_plugin_version)" || return 1
+  stable="$(get_stable_tag)" || return 1
 
   send_stage_notice "Parsing" "Detected plugin version ${version}."
 
@@ -290,11 +313,11 @@ main() {
     append_summary ""
   fi
 
-  range_info="$(find_version_range "$version")"
+  range_info="$(find_version_range "$version")" || return 1
   IFS=$'\t' read -r previous_commit current_commit previous_version <<< "$range_info"
 
   send_stage_notice "Validation" "Using range from version ${previous_version} (${previous_commit}) to HEAD for current version ${version}."
-  collect_release_entries "$previous_commit"
+  collect_release_entries "$previous_commit" || return 1
 
   date_now="$(current_date)"
   build_changelog_block "$version" "$date_now"
@@ -308,10 +331,28 @@ main() {
 
   append_job_summary "$version" "$stable" "$previous_commit" "$current_commit" "$previous_version"
 
-  send_matrix "Make changelog entries for v${version}" "<strong>Make changelog entries for v${version}</strong><br><pre>$(escape_html_file "$BLOCK_FILE")</pre>" || true
+  append_matrix_block "Make changelog entries for v${version}" "$BLOCK_FILE"
 
   commit_and_push "$version"
   send_stage_notice "Success" "Changelog rebuilt successfully for v${version}."
+}
+
+main() {
+  notice "Matrix configured: server=${MATRIX_SERVER:+yes}, room=${MATRIX_ROOM:+yes}, token=${MATRIX_TOKEN:+yes}"
+  send_stage_notice "Start" "Workflow started for branch ${TARGET_BRANCH}."
+
+  if run_changelog; then
+    flush_matrix "Make changelog completed"
+    exit 0
+  fi
+
+  warn "Changelog build was skipped due to errors (see summary). Continuing without failing the job."
+  append_summary "## Result"
+  append_summary "- Changelog build was skipped due to errors (see warnings above)."
+  append_summary "- The workflow will continue so that the release asset can still be built."
+  send_stage_notice "Skipped" "Changelog build was skipped due to errors. Downstream jobs will continue."
+  flush_matrix "Make changelog skipped"
+  exit 0
 }
 
 main "$@"

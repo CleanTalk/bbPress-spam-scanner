@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
 import json
 import sys
 import urllib.parse
@@ -7,16 +10,16 @@ import uuid
 
 def main() -> int:
     if len(sys.argv) != 6:
-        raise SystemExit("Usage: matrix_notify.py <server> <room> <token> <body> <formatted>")
+        raise SystemExit("usage: matrix_send.py <server> <room> <token> <body> <formatted>")
 
     server, room, token, body, formatted = sys.argv[1:6]
     if not server or not room or not token:
         return 0
 
     server = server.rstrip('/')
-    room = urllib.parse.quote(room, safe='')
+    room_q = urllib.parse.quote(room, safe='')
     txn = urllib.parse.quote(uuid.uuid4().hex, safe='')
-    url = f"{server}/_matrix/client/v3/rooms/{room}/send/m.room.message/{txn}"
+    url = f"{server}/_matrix/client/v3/rooms/{room_q}/send/m.room.message/{txn}"
 
     payload = {"msgtype": "m.text", "body": body}
     if formatted:
@@ -37,11 +40,11 @@ def main() -> int:
         with urllib.request.urlopen(req, timeout=30) as response:
             response.read()
     except urllib.error.HTTPError as e:
-        detail = e.read().decode('utf-8', errors='replace')
+        detail = e.read().decode("utf-8", errors="replace")
         raise SystemExit(f"Matrix send failed with HTTP {e.code}: {detail}")
 
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     raise SystemExit(main())
