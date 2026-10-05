@@ -17,7 +17,7 @@ def escape_file(path: str) -> int:
 
 
 def parse_subject(subject: str) -> int:
-    match = re.match(r"^\{to_release:\s*(\d+)\}\s+(Fix|Upd|New)\.\s*(.+)$", subject)
+    match = re.match(r"^\{to_release:\s*(\d+)\}\s+(Fix|Upd|New|Code)\.\s*(.+)$", subject)
     if not match:
         return 0
     print("\t".join(match.groups()))

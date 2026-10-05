@@ -14,6 +14,10 @@ MATRIX_TOKEN="${INPUT_MATRIX_TOKEN:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP_DIR="$(mktemp -d)"
 SUMMARY_FILE="${GITHUB_STEP_SUMMARY:-${TMP_DIR}/summary.md}"
+MATRIX_LOG_TXT="${TMP_DIR}/matrix.txt"
+MATRIX_LOG_HTML="${TMP_DIR}/matrix.html"
+: > "$MATRIX_LOG_TXT"
+: > "$MATRIX_LOG_HTML"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 notice() { echo "::notice::$1"; }
@@ -28,6 +32,7 @@ escape_html_text() {
 send_matrix() {
   local body="$1"
   local formatted="${2:-}"
+  [[ -n "$MATRIX_SERVER" && -n "$MATRIX_ROOM" && -n "$MATRIX_TOKEN" ]] || return 0
   python3 "$SCRIPT_DIR/matrix_send.py" "$MATRIX_SERVER" "$MATRIX_ROOM" "$MATRIX_TOKEN" "$body" "$formatted"
 }
 
@@ -35,7 +40,16 @@ log_stage() {
   local stage="$1"
   local text="$2"
   notice "$stage: $text"
-  send_matrix "$stage: $text" "<strong>${stage}</strong><br>$(escape_html_text "$text")" || true
+  printf '%s: %s\n' "$stage" "$text" >> "$MATRIX_LOG_TXT"
+  printf '<li><strong>%s</strong>: %s</li>\n' "$stage" "$(escape_html_text "$text")" >> "$MATRIX_LOG_HTML"
+}
+
+flush_matrix() {
+  local header="$1"
+  local body_txt formatted
+  body_txt="${header}"$'\n\n'"$(cat "$MATRIX_LOG_TXT")"
+  formatted="<strong>${header}</strong><br><ul>$(cat "$MATRIX_LOG_HTML")</ul>"
+  send_matrix "$body_txt" "$formatted" || true
 }
 
 fail() {
@@ -43,7 +57,9 @@ fail() {
   error_annot "$msg"
   append_summary "## Error"
   append_summary "- $msg"
-  send_matrix "SVN publish failed: $msg" "<strong>SVN publish failed</strong><br>$(escape_html_text "$msg")" || true
+  printf 'ERROR: %s\n' "$msg" >> "$MATRIX_LOG_TXT"
+  printf '<li><strong>ERROR</strong>: %s</li>\n' "$(escape_html_text "$msg")" >> "$MATRIX_LOG_HTML"
+  flush_matrix "SVN publish failed"
   exit 1
 }
 
@@ -141,6 +157,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
   append_summary "- trunk would be updated from the filtered master tree."
   append_summary "- tags/${VERSION} would be created from trunk."
   append_summary "- Expected download URL: ${DOWNLOAD_URL}"
+  flush_matrix "SVN publish dry-run completed"
   exit 0
 fi
 
@@ -201,3 +218,4 @@ append_summary "- ZIP file count: ${ZIP_FILE_COUNT}"
 
 log_stage "Validation" "Downloaded ZIP content matches the filtered master tree."
 log_stage "Success" "Release ${VERSION} published to SVN from the filtered master tree and validated. Download URL: ${DOWNLOAD_URL}"
+flush_matrix "SVN publish completed"
