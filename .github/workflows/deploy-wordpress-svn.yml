@@ -38,3 +38,26 @@ jobs:
           matrix_server: ${{ secrets.MATRIX_SERVER }}
           matrix_room: ${{ secrets.MATRIX_GITHUB_WORKFLOW_FEED }}
           matrix_token: ${{ secrets.MATRIX_USER_TOKEN }}
+
+  psc-task:
+    needs: svn-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Create PSC task
+        uses: ./.github/actions/create-psc-task
+        with:
+          version: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.version }}
+          plugin_slug: cleantalk-bbpress-spam-scanner
+          create_task: ${{ (github.event_name == 'release' || inputs.dry_run == 'false') && 'true' || 'false' }}
+          role_name: Pentesting on Duty
+          doboard_username: ${{ secrets.DOBOARD_USERNAME }}
+          doboard_password: ${{ secrets.DOBOARD_PASSWORD }}
+          doboard_company_id: "1"
+          doboard_project_id: "78"
+          doboard_track_id: "1537"
