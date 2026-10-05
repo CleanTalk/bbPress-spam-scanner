@@ -1,11 +1,7 @@
 name: Deploy WordPress SVN
-description: Publish WordPress plugin to SVN from prepared beta release asset
+description: Publish WordPress plugin to SVN from the master checkout
 inputs:
   version:
-    required: true
-  beta_tag:
-    required: true
-  asset_name:
     required: true
   dry_run:
     required: true
@@ -14,8 +10,6 @@ inputs:
   svn_password:
     required: true
   svn_url:
-    required: true
-  github_token:
     required: true
   matrix_server:
     required: false
@@ -34,13 +28,10 @@ runs:
       shell: bash
       env:
         INPUT_VERSION: ${{ inputs.version }}
-        INPUT_BETA_TAG: ${{ inputs.beta_tag }}
-        INPUT_ASSET_NAME: ${{ inputs.asset_name }}
         INPUT_DRY_RUN: ${{ inputs.dry_run }}
         INPUT_SVN_USERNAME: ${{ inputs.svn_username }}
         INPUT_SVN_PASSWORD: ${{ inputs.svn_password }}
         INPUT_SVN_URL: ${{ inputs.svn_url }}
-        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_MATRIX_SERVER: ${{ inputs.matrix_server }}
         INPUT_MATRIX_ROOM: ${{ inputs.matrix_room }}
         INPUT_MATRIX_TOKEN: ${{ inputs.matrix_token }}
