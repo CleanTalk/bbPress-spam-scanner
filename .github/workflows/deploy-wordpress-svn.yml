@@ -6,14 +6,6 @@ on:
       version:
         description: "Final release version for SVN tag, for example 1.0.4"
         required: true
-      beta_tag:
-        description: "GitHub beta release tag to fetch the prepared asset from"
-        required: true
-        default: "beta-version"
-      asset_name:
-        description: "Prepared ZIP asset name from beta release"
-        required: true
-        default: "cleantalk-bbpress-spam-scanner.zip"
       dry_run:
         description: "Run in dry-run mode"
         required: true
@@ -35,17 +27,37 @@ jobs:
           ref: master
           fetch-depth: 0
 
-      - name: Publish to SVN from beta asset
+      - name: Publish to SVN from master
         uses: ./.github/actions/deploy-wordpress-svn
         with:
           version: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.version }}
-          beta_tag: ${{ github.event_name == 'release' && 'beta-version' || inputs.beta_tag }}
-          asset_name: ${{ github.event_name == 'release' && 'cleantalk-bbpress-spam-scanner.zip' || inputs.asset_name }}
           dry_run: ${{ github.event_name == 'release' && 'false' || inputs.dry_run }}
           svn_username: ${{ secrets.SVN_USERNAME }}
           svn_password: ${{ secrets.SVN_PASSWORD }}
           svn_url: ${{ secrets.SVN_URL }}
-          github_token: ${{ secrets.SVN_GITHUB_TOKEN }}
           matrix_server: ${{ secrets.MATRIX_SERVER }}
           matrix_room: ${{ secrets.MATRIX_GITHUB_WORKFLOW_FEED }}
           matrix_token: ${{ secrets.MATRIX_USER_TOKEN }}
+
+  psc-task:
+    needs: svn-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Create PSC task
+        uses: ./.github/actions/create-psc-task
+        with:
+          version: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.version }}
+          plugin_slug: cleantalk-bbpress-spam-scanner
+          create_task: ${{ (github.event_name == 'release' || inputs.dry_run == 'false') && 'true' || 'false' }}
+          role_name: Pentesting on Duty
+          doboard_username: ${{ secrets.DOBOARD_USERNAME }}
+          doboard_password: ${{ secrets.DOBOARD_PASSWORD }}
+          doboard_company_id: "1"
+          doboard_project_id: "78"
+          doboard_track_id: "1537"
